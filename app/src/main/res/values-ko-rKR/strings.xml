@@ -227,6 +227,7 @@
     <!-- 보율 설정 다이얼로그 -->
     <string name="baudrate_dialog_title">보율 선택</string>
     <string name="baudrate_9600">9600 bps (안정)</string>
+    <string name="baudrate_57600">57600 bps</string>
     <string name="baudrate_115200">115200 bps (고속)</string>
     <string name="baudrate_dialog_cancel">취소</string>
     <string name="baudrate_current">현재: %s bps</string>

@@ -334,6 +334,7 @@ public class DrawerLayoutDeal extends Fragment {
         
         RadioGroup radioGroup = dialogView.findViewById(R.id.baudrate_radio_group);
         RadioButton radio115200 = dialogView.findViewById(R.id.radio_115200);
+        RadioButton radio57600 = dialogView.findViewById(R.id.radio_57600);
         RadioButton radio9600 = dialogView.findViewById(R.id.radio_9600);
         TextView currentBaudrateText = dialogView.findViewById(R.id.current_baudrate_text);
         
@@ -354,6 +355,8 @@ public class DrawerLayoutDeal extends Fragment {
         int preferredBaudrate = usbManager.getPreferredBaudrate();
         if (preferredBaudrate == 115200) {
             radio115200.setChecked(true);
+        } else if (preferredBaudrate == 57600) {
+            radio57600.setChecked(true);
         } else if (preferredBaudrate == 9600) {
             radio9600.setChecked(true);
         } else {
@@ -375,6 +378,8 @@ public class DrawerLayoutDeal extends Fragment {
             
             if (selectedId == R.id.radio_115200) {
                 newBaudrate = 115200;
+            } else if (selectedId == R.id.radio_57600) {
+                newBaudrate = 57600;
             } else if (selectedId == R.id.radio_9600) {
                 newBaudrate = 9600;
             } else {
