@@ -1,0 +1,41 @@
+name: Build 57600 baud APK
+
+on:
+  push:
+    branches: [support-57600]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android build tools
+        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'ndk;26.3.11579264' 'cmake;3.22.1'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build WebRTC client
+        working-directory: Openterface_WebUI
+        run: npm ci && npm run build:webrtc:android
+      - name: Build APK and test baudrate settings
+        run: |
+          chmod +x gradlew
+          printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
+          ./gradlew :app:assembleRelease :app:testDebugUnitTest --tests com.openterface.AOS.serial.UsbDeviceManagerBaudrateTest -x buildWebClient --console=plain
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Openterface-1.2.9-57600-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error

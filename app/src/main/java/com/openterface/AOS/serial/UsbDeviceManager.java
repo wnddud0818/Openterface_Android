@@ -67,10 +67,11 @@ public class UsbDeviceManager {
     private HandlerThread mSerialThread;
     private Handler mSerialAsyncHandler;
     private Context context;
-    private boolean isReading = false;
+    private volatile boolean isReading = false;
     private TextView tvReceivedData;
     private int currentBaudrate = -1; // Track the working baudrate
     private int preferredBaudrate = DEFAULT_BAUDRATE;
+    private boolean hasUserPreferredBaudrate = false;
     private UsbDevice pendingDevice; // Device waiting for connection
     private volatile boolean isConnecting = false; // Prevents double-connect from fallback + onDeviceOpen
     private volatile long isConnectingTimestamp = 0; // Tracks when isConnecting was set — used to detect stuck state
@@ -85,8 +86,11 @@ public class UsbDeviceManager {
     
     // Baudrate constants - similar to C++ version
     private static final int BAUDRATE_HIGHSPEED = 115200;
+    private static final int BAUDRATE_MIDSPEED = 57600;
     private static final int BAUDRATE_LOWSPEED = 9600;
     private static final int DEFAULT_BAUDRATE = BAUDRATE_HIGHSPEED; // Try high speed first
+    private static final String SERIAL_SETTINGS = "serial_settings";
+    private static final String KEY_PREFERRED_BAUDRATE = "preferred_baudrate";
     private UsbDeviceManager usbDeviceManager;
 
     public interface OnDataReadListener {
@@ -1736,6 +1740,13 @@ public class UsbDeviceManager {
     public UsbDeviceManager(Context context, UsbManager usbManager) {
         this.context = context;
         this.usbManager = usbManager;
+        int savedBaudrate = context.getSharedPreferences(SERIAL_SETTINGS, Context.MODE_PRIVATE)
+                .getInt(KEY_PREFERRED_BAUDRATE, -1);
+        if (savedBaudrate == BAUDRATE_LOWSPEED || savedBaudrate == BAUDRATE_MIDSPEED
+                || savedBaudrate == BAUDRATE_HIGHSPEED) {
+            preferredBaudrate = savedBaudrate;
+            hasUserPreferredBaudrate = true;
+        }
         mSerialThread = new HandlerThread("Serial");
         mSerialThread.start();
         mSerialAsyncHandler = new Handler(mSerialThread.getLooper());
@@ -1999,6 +2010,11 @@ public class UsbDeviceManager {
      * Apply device-specific configuration based on VID/PID
      */
     private void applyDeviceSpecificConfig(UsbDevice device) {
+        // Keep the user's selection when USB devices are detected again.
+        if (hasUserPreferredBaudrate) {
+            Log.d(TAG, "Keeping user-selected baudrate: " + preferredBaudrate);
+            return;
+        }
         int vid = device.getVendorId();
         int pid = device.getProductId();
 
@@ -2155,13 +2171,13 @@ public class UsbDeviceManager {
             baudrates = new int[] { BAUDRATE_HIGHSPEED };
             Log.d(TAG, "Mini-KVM v2 (1A86:FE0C) - trying 115200 baud only");
         } else if (vid == 0x1A86 && pid == 0x7523) {
-            // Mini-KVM v1: Supports both 9600 and 115200
-            baudrates = new int[] { BAUDRATE_HIGHSPEED, BAUDRATE_LOWSPEED };
-            Log.d(TAG, "Mini-KVM v1 (1A86:7523) - trying 115200 and 9600 baud");
+            // Include 57600 for CH340 devices configured to use that speed.
+            baudrates = new int[] { BAUDRATE_HIGHSPEED, BAUDRATE_MIDSPEED, BAUDRATE_LOWSPEED };
+            Log.d(TAG, "Mini-KVM v1 (1A86:7523) - trying 115200, 57600 and 9600 baud");
         } else {
             // Fallback for any other device
-            baudrates = new int[] { BAUDRATE_HIGHSPEED, BAUDRATE_LOWSPEED };
-            Log.d(TAG, "Unknown device - trying both baudrates");
+            baudrates = new int[] { BAUDRATE_HIGHSPEED, BAUDRATE_MIDSPEED, BAUDRATE_LOWSPEED };
+            Log.d(TAG, "Unknown device - trying 115200, 57600 and 9600 baud");
         }
         
         Log.d(TAG, "Available baudrates for this device: " + java.util.Arrays.toString(baudrates));
@@ -2259,11 +2275,12 @@ public class UsbDeviceManager {
                 
                 // Try with basic 8N1 configuration
                 try {
-                    port.setParameters(9600, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE);
-                    Log.d(TAG, "✅ Direct configuration succeeded at 9600 baud");
-                    currentBaudrate = 9600;
+                    int recoveryBaudrate = hasUserPreferredBaudrate ? preferredBaudrate : BAUDRATE_LOWSPEED;
+                    port.setParameters(recoveryBaudrate, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE);
+                    Log.d(TAG, "✅ Direct configuration succeeded at " + recoveryBaudrate + " baud");
+                    currentBaudrate = recoveryBaudrate;
                     if (onConnectionStatusListener != null) {
-                        onConnectionStatusListener.onConnected(9600);
+                        onConnectionStatusListener.onConnected(recoveryBaudrate);
                     }
                     startReading();
                 } catch (Exception e) {
@@ -2439,10 +2456,13 @@ public class UsbDeviceManager {
 
     /**
      * Set the preferred baudrate for serial communication
-     * @param baudrate the preferred baudrate (9600 or 115200)
+     * @param baudrate the preferred baudrate (9600, 57600 or 115200)
      */
     public void setPreferredBaudrate(int baudrate) {
         this.preferredBaudrate = baudrate;
+        hasUserPreferredBaudrate = true;
+        context.getSharedPreferences(SERIAL_SETTINGS, Context.MODE_PRIVATE).edit()
+                .putInt(KEY_PREFERRED_BAUDRATE, baudrate).apply();
         Log.d(TAG, "Preferred baudrate set to: " + baudrate);
     }
 
@@ -2460,16 +2480,12 @@ public class UsbDeviceManager {
      * @return true if reconnection successful, false otherwise
      */
     public boolean reconnectWithBaudrate(int baudrate) {
-        if (port != null && port.isOpen()) {
-            try {
-                port.close();
-                Log.d(TAG, "Closed existing connection for baudrate change");
-                if (onConnectionStatusListener != null) {
-                    onConnectionStatusListener.onDisconnected();
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error closing port for reconnection", e);
-            }
+        boolean wasConnected = isConnected();
+        // Stop the read loop and reset isConnecting before queuing connect().
+        isReading = false;
+        closeDevice();
+        if (wasConnected && onConnectionStatusListener != null) {
+            onConnectionStatusListener.onDisconnected();
         }
         
         // Set the preferred baudrate and reconnect

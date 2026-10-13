@@ -4292,7 +4292,8 @@ public class MainActivity extends BaseActivity implements SettingsFloatingFragme
         TextView baudrateValue = view.findViewById(R.id.settings_baudrate_value);
         if (baudrateLayout != null && baudrateValue != null) {
             int currentBaudrate = usbDeviceManager != null ? usbDeviceManager.getCurrentBaudrate() : 0;
-            baudrateValue.setText(String.valueOf(currentBaudrate > 0 ? currentBaudrate : 115200));
+            int preferredBaudrate = usbDeviceManager != null ? usbDeviceManager.getPreferredBaudrate() : 115200;
+            baudrateValue.setText(String.valueOf(currentBaudrate > 0 ? currentBaudrate : preferredBaudrate));
             baudrateLayout.setOnClickListener(v -> showBaudrateDialogInPortrait(baudrateValue));
         }
 
@@ -4449,6 +4450,7 @@ public class MainActivity extends BaseActivity implements SettingsFloatingFragme
 
         RadioGroup radioGroup = dialogView.findViewById(R.id.baudrate_radio_group);
         RadioButton radio115200 = dialogView.findViewById(R.id.radio_115200);
+        RadioButton radio57600 = dialogView.findViewById(R.id.radio_57600);
         RadioButton radio9600 = dialogView.findViewById(R.id.radio_9600);
         TextView currentBaudrateText = dialogView.findViewById(R.id.current_baudrate_text);
 
@@ -4459,6 +4461,7 @@ public class MainActivity extends BaseActivity implements SettingsFloatingFragme
 
         int preferredBaudrate = usbDeviceManager != null ? usbDeviceManager.getPreferredBaudrate() : 115200;
         if (preferredBaudrate == 9600) radio9600.setChecked(true);
+        else if (preferredBaudrate == 57600) radio57600.setChecked(true);
         else radio115200.setChecked(true);
 
         AlertDialog dialog = new AlertDialog.Builder(this)
@@ -4467,7 +4470,9 @@ public class MainActivity extends BaseActivity implements SettingsFloatingFragme
                 .create();
 
         dialogView.findViewById(R.id.button_ok).setOnClickListener(v -> {
-            int newBaudrate = radioGroup.getCheckedRadioButtonId() == R.id.radio_9600 ? 9600 : 115200;
+            int selectedId = radioGroup.getCheckedRadioButtonId();
+            int newBaudrate = selectedId == R.id.radio_9600 ? 9600
+                : selectedId == R.id.radio_57600 ? 57600 : 115200;
             if (newBaudrate != preferredBaudrate) {
                 if (usbDeviceManager != null && usbDeviceManager.isConnected()) {
                     usbDeviceManager.reconnectWithBaudrate(newBaudrate);

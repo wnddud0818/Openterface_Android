@@ -41,6 +41,14 @@
             android:checked="true" />
 
         <RadioButton
+            android:id="@+id/radio_57600"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/baudrate_57600"
+            android:textSize="16sp"
+            android:padding="8dp" />
+
+        <RadioButton
             android:id="@+id/radio_9600"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
